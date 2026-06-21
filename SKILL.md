@@ -8,15 +8,17 @@ not a global-optimality proof).
 ## Base URL
 
 ```
-REPLACE_WITH_RENDER_URL
+https://negotiation-service.onrender.com
 ```
+
+Note: this runs on a free host and may take up to ~60 seconds to wake on the first request after it has been idle.
 
 ## Endpoints
 
 ### `GET /` — health
 
 ```bash
-curl REPLACE_WITH_RENDER_URL/
+curl https://negotiation-service.onrender.com/
 ```
 
 ```json
@@ -31,7 +33,7 @@ full bilateral exchange and returns the agreed bundle, both utilities, whether t
 deal is non-dominated by any exchanged bundle, and the trace.
 
 ```bash
-curl -X POST REPLACE_WITH_RENDER_URL/negotiate \
+curl -X POST https://negotiation-service.onrender.com/negotiate \
   -H 'content-type: application/json' \
   -d '{
     "buyer":  {"w_price": 0.9, "w_deadline": 0.1, "reservation": 0.0, "patience": 0.9},
@@ -69,7 +71,7 @@ For live, turn-by-turn negotiation: pass your own utility, the current `round`
 accept and, if not, what to counter with.
 
 ```bash
-curl -X POST REPLACE_WITH_RENDER_URL/counter \
+curl -X POST https://negotiation-service.onrender.com/counter \
   -H 'content-type: application/json' \
   -d '{
     "role": "seller",

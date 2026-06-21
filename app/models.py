@@ -119,3 +119,43 @@ class CounterResponse(BaseModel):
     counter_offer: Offer | None
     my_utility_of_opponent_offer: float
     aspiration: float
+
+
+class DealBuyer(BaseModel):
+    """A buyer described in plain terms."""
+
+    budget: int = Field(gt=0)
+    needed_by_days: int = Field(ge=1)
+    cares_most_about: Literal["price", "speed", "both"]
+
+
+class DealSeller(BaseModel):
+    """A seller described in plain terms."""
+
+    min_price: int = Field(gt=0)
+    preferred_deadline_days: int = Field(ge=1)
+    cares_most_about: Literal["price", "deadline", "both"]
+
+
+class DealRequest(BaseModel):
+    """Request for a plain-language one-shot deal."""
+
+    buyer: DealBuyer
+    seller: DealSeller
+
+
+class DealOutcome(BaseModel):
+    """The agreed (price, deadline_days) bundle."""
+
+    price: int
+    deadline_days: int
+
+
+class DealResponse(BaseModel):
+    """A plain-language deal result. ``deal`` is null when there is no agreement."""
+
+    deal: DealOutcome | None
+    summary: str
+    fair: bool
+    buyer_satisfaction: float
+    seller_satisfaction: float

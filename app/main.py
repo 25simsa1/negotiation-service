@@ -7,12 +7,15 @@ from fastapi import FastAPI
 from app.models import (
     CounterRequest,
     CounterResponse,
+    DealOutcome,
+    DealRequest,
+    DealResponse,
     NegotiateRequest,
     NegotiateResponse,
     Offer,
     TraceEntry,
 )
-from app.negotiation import Party, advise_counter, run_negotiation
+from app.negotiation import Party, advise_counter, plain_deal, run_negotiation
 
 app = FastAPI(
     title="negotiation",
@@ -46,6 +49,31 @@ def negotiate(req: NegotiateRequest) -> NegotiateResponse:
         pareto_optimal=result.pareto_optimal,
         rounds=result.rounds,
         trace=[TraceEntry(**entry) for entry in result.trace],
+    )
+
+
+@app.post("/deal", response_model=DealResponse)
+def deal(req: DealRequest) -> DealResponse:
+    """Strike a fair deal from plain-language descriptions of buyer and seller."""
+    result = plain_deal(
+        req.buyer.budget,
+        req.buyer.needed_by_days,
+        req.buyer.cares_most_about,
+        req.seller.min_price,
+        req.seller.preferred_deadline_days,
+        req.seller.cares_most_about,
+    )
+    outcome = (
+        DealOutcome(price=result.deal[0], deadline_days=result.deal[1])
+        if result.deal is not None
+        else None
+    )
+    return DealResponse(
+        deal=outcome,
+        summary=result.summary,
+        fair=result.fair,
+        buyer_satisfaction=result.buyer_satisfaction,
+        seller_satisfaction=result.seller_satisfaction,
     )
 
 

@@ -244,3 +244,97 @@ def advise_counter(
         return CounterResult(True, None, u_opp, alpha)
     counter = tradeoff_counter(party, price_range, deadline_range, alpha, opp_price, opp_deadline)
     return CounterResult(False, counter, u_opp, alpha)
+
+
+# ---------------------------------------------------------------------------
+# Plain-language facade over the negotiation core
+# ---------------------------------------------------------------------------
+
+_DEAL_RESERVATION = 0.0
+_DEAL_PATIENCE = 0.9
+_DEAL_MAX_ROUNDS = 12
+
+
+@dataclass
+class DealResult:
+    """Plain-language outcome of a one-shot deal."""
+
+    deal: tuple[int, int] | None  # (price, deadline_days)
+    summary: str
+    fair: bool
+    buyer_satisfaction: float
+    seller_satisfaction: float
+
+
+def _weights_for(cares_most_about: str) -> tuple[float, float]:
+    """Map an intuitive priority to (w_price, w_deadline) weights summing to 1.
+
+    ``"price"`` is price-heavy, ``"speed"`` (buyer) / ``"deadline"`` (seller) is
+    deadline-heavy, and ``"both"`` is balanced.
+    """
+    if cares_most_about == "price":
+        return (0.85, 0.15)
+    if cares_most_about == "both":
+        return (0.5, 0.5)
+    return (0.15, 0.85)  # "speed" (buyer) or "deadline" (seller)
+
+
+def plain_deal(
+    budget: int,
+    needed_by_days: int,
+    buyer_cares_most_about: str,
+    min_price: int,
+    preferred_deadline_days: int,
+    seller_cares_most_about: str,
+) -> DealResult:
+    """Translate plain-language buyer/seller descriptions into a fair deal.
+
+    Maps the intuitive inputs onto the negotiation core: the price zone of
+    agreement is ``[min_price, budget]`` (buyer prefers the low end, seller the
+    high end); the deadline range spans the two stated days (buyer prefers the
+    short end, seller the long end); priorities become utility weights. Reuses
+    :func:`run_negotiation`; it does not re-implement any of the negotiation math.
+    """
+    if min_price > budget:
+        return DealResult(
+            None,
+            f"No deal: the buyer's budget ({budget}) is below the seller's minimum ({min_price}).",
+            False,
+            0.0,
+            0.0,
+        )
+
+    price_lo, price_hi = min_price, budget
+    if price_lo == price_hi:
+        price_hi += 1  # widen so the price range is non-empty
+    deadline_lo = min(needed_by_days, preferred_deadline_days)
+    deadline_hi = max(needed_by_days, preferred_deadline_days)
+    if deadline_lo == deadline_hi:
+        deadline_hi += 1  # widen so the deadline range is non-empty
+
+    price_range = (price_lo, price_hi)
+    deadline_range = (deadline_lo, deadline_hi)
+    bw_price, bw_deadline = _weights_for(buyer_cares_most_about)
+    sw_price, sw_deadline = _weights_for(seller_cares_most_about)
+    buyer = Party(bw_price, bw_deadline, _DEAL_RESERVATION, _DEAL_PATIENCE, "buyer")
+    seller = Party(sw_price, sw_deadline, _DEAL_RESERVATION, _DEAL_PATIENCE, "seller")
+
+    result = run_negotiation(buyer, seller, price_range, deadline_range, _DEAL_MAX_ROUNDS)
+    if result.agreement is None:
+        return DealResult(
+            None,
+            "No deal: the buyer and seller could not agree on terms within the negotiation window.",
+            False,
+            0.0,
+            0.0,
+        )
+
+    price, deadline = result.agreement
+    price = min(price, budget)  # never report a price above the buyer's stated budget
+    buyer_satisfaction = round(utility(buyer, price_range, deadline_range, price, deadline), 3)
+    seller_satisfaction = round(utility(seller, price_range, deadline_range, price, deadline), 3)
+    summary = (
+        f"Agreed on a price of {price} with delivery in {deadline} days; "
+        "both sides do better than walking away."
+    )
+    return DealResult((price, deadline), summary, result.pareto_optimal, buyer_satisfaction, seller_satisfaction)

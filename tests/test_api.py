@@ -135,3 +135,62 @@ def test_negative_round_returns_422() -> None:
     bad = {**_COUNTER_ACCEPT_BODY, "round": -1}
     resp = client.post("/counter", json=bad)
     assert resp.status_code == 422
+
+
+# Plain-language /deal endpoint
+
+_DEAL_PRICE_BUYER: dict[str, Any] = {
+    "buyer": {"budget": 120, "needed_by_days": 7, "cares_most_about": "price"},
+    "seller": {"min_price": 80, "preferred_deadline_days": 30, "cares_most_about": "deadline"},
+}
+
+
+def test_deal_returns_fair_agreement() -> None:
+    resp = client.post("/deal", json=_DEAL_PRICE_BUYER)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deal"] is not None
+    assert 80 <= body["deal"]["price"] <= 120
+    assert body["fair"] is True
+    # Both do better than walking away (reservation 0.0).
+    assert body["buyer_satisfaction"] > 0.0
+    assert body["seller_satisfaction"] > 0.0
+    assert "Agreed on a price" in body["summary"]
+
+
+def test_deal_no_overlap_returns_null_with_explanation() -> None:
+    body_req = {
+        "buyer": {"budget": 50, "needed_by_days": 7, "cares_most_about": "price"},
+        "seller": {"min_price": 80, "preferred_deadline_days": 30, "cares_most_about": "deadline"},
+    }
+    resp = client.post("/deal", json=body_req)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deal"] is None
+    assert body["fair"] is False
+    assert body["summary"] == "No deal: the buyer's budget (50) is below the seller's minimum (80)."
+
+
+def test_deal_priority_changes_outcome() -> None:
+    # A price-focused buyer accepts a longer deadline for a low price; a
+    # speed-focused buyer pays more to get a shorter deadline.
+    price_focused = client.post("/deal", json=_DEAL_PRICE_BUYER).json()
+    speed_body = {
+        **_DEAL_PRICE_BUYER,
+        "buyer": {"budget": 120, "needed_by_days": 7, "cares_most_about": "speed"},
+    }
+    speed_focused = client.post("/deal", json=speed_body).json()
+    assert price_focused["deal"] != speed_focused["deal"]
+    assert speed_focused["deal"]["deadline_days"] < price_focused["deal"]["deadline_days"]
+
+
+def test_deal_bad_input_returns_422() -> None:
+    # budget must be > 0.
+    bad_budget = {**_DEAL_PRICE_BUYER, "buyer": {"budget": 0, "needed_by_days": 7, "cares_most_about": "price"}}
+    assert client.post("/deal", json=bad_budget).status_code == 422
+    # cares_most_about must be in the allowed set.
+    bad_pref = {**_DEAL_PRICE_BUYER, "buyer": {"budget": 120, "needed_by_days": 7, "cares_most_about": "whatever"}}
+    assert client.post("/deal", json=bad_pref).status_code == 422
+    # needed_by_days must be >= 1.
+    bad_days = {**_DEAL_PRICE_BUYER, "buyer": {"budget": 120, "needed_by_days": 0, "cares_most_about": "price"}}
+    assert client.post("/deal", json=bad_days).status_code == 422
